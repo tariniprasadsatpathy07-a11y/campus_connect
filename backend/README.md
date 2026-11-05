@@ -27,6 +27,7 @@ To support the frontend's unauthenticated demo profile switcher, run
 `demo_profiles.sql` once in the Supabase SQL Editor. It creates public demo-only
 profile and per-browser preference tables. The chosen profile is stored against
 a browser-generated ID. These demo profiles do not authenticate a person and
-must not be used for private data or real event registration. Redeploy the
-backend after changing `app.py` so the `/api/demo-users` and `/api/demo-user`
-routes are available.
+must not be used for private data or real verified identities. Demo event
+registrations are stored separately from real user registrations. Redeploy the
+backend after changing `app.py` so the `/api/demo-users`, `/api/demo-user`, and
+`/api/demo-registrations` routes are available.

@@ -2,8 +2,9 @@
 
 The app opens directly to public event discovery. Its demo profile switcher
 lets visitors select or add a display profile; the selected profile is saved in
-the backend database for that browser. Demo profiles are not authenticated
-users and cannot register for events or view private attendee lists.
+the backend database for that browser. Visitors can register demo profiles for
+events, and see those registrations under **My registrations**. These demo
+profiles are not authenticated users and must not be treated as verified people.
 
 ## Local setup
 
@@ -37,5 +38,5 @@ The included `vercel.json` configures Vite, `npm ci`, `npm run build`, and the
 `https://your-project.vercel.app`) and redeploy the backend so its CORS policy
 allows the frontend.
 
-The pages use `GET /api/events`, `GET /api/events/{id}`, `GET /api/demo-users`,
-`POST /api/demo-users`, `GET /api/demo-user`, and `PUT /api/demo-user`.
+The pages use `GET /api/events`, `GET /api/events/{id}`, the demo profile
+endpoints, and `GET/POST /api/demo-registrations`.

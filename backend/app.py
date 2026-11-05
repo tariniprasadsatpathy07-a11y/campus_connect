@@ -113,6 +113,8 @@ def create_app():
                 "POST /api/demo-users",
                 "GET /api/demo-user",
                 "PUT /api/demo-user",
+                "GET /api/demo-registrations",
+                "POST /api/demo-registrations",
                 "POST /api/registrations",
                 "GET /api/me/registrations",
                 "GET /api/events/<id>/registrations",
@@ -186,6 +188,89 @@ def create_app():
         except APIError as error:
             app.logger.exception("Could not save selected demo profile")
             return jsonify({"error": "Could not save selected demo profile", "details": str(error)}), 500
+
+    @app.get("/api/demo-registrations")
+    def list_demo_registrations():
+        demo_profile_id = parse_uuid(request.args.get("demo_profile_id"))
+        if not demo_profile_id:
+            return jsonify({"error": "A valid demo_profile_id is required"}), 400
+        try:
+            result = (
+                db().table("demo_registrations")
+                .select("id,demo_profile_id,event_id,created_at,events(*)")
+                .eq("demo_profile_id", demo_profile_id)
+                .order("created_at", desc=True)
+                .execute()
+            )
+            return jsonify({"data": result.data}), 200
+        except APIError as error:
+            app.logger.exception("Could not load demo registrations")
+            return jsonify({"error": "Demo registration tables are not ready. Run backend/demo_profiles.sql in the Supabase SQL Editor.", "details": str(error)}), 500
+
+    @app.post("/api/demo-registrations")
+    def create_demo_registration():
+        body = request.get_json(silent=True) or {}
+        demo_profile_id = parse_uuid(body.get("demo_profile_id"))
+        event_id = parse_uuid(body.get("event_id"))
+        if not demo_profile_id or not event_id:
+            return jsonify({"error": "Valid demo_profile_id and event_id are required"}), 400
+
+        try:
+            profile = (
+                db().table("demo_profiles")
+                .select("id,display_name")
+                .eq("id", demo_profile_id)
+                .maybe_single()
+                .execute()
+            ).data
+            if not profile:
+                return jsonify({"error": "Demo profile not found"}), 404
+
+            event = (
+                db().table("events")
+                .select("id,capacity")
+                .eq("id", event_id)
+                .maybe_single()
+                .execute()
+            ).data
+            if not event:
+                return jsonify({"error": "Event not found"}), 404
+
+            existing = (
+                db().table("demo_registrations")
+                .select("id")
+                .eq("demo_profile_id", demo_profile_id)
+                .eq("event_id", event_id)
+                .limit(1)
+                .execute()
+            )
+            if existing.data:
+                return jsonify({"error": "This demo profile is already registered for the event"}), 409
+
+            capacity = event.get("capacity")
+            if capacity is not None:
+                count = (
+                    db().table("demo_registrations")
+                    .select("id", count="exact")
+                    .eq("event_id", event_id)
+                    .execute()
+                )
+                if (count.count or 0) >= capacity:
+                    return jsonify({"error": "This event is full"}), 409
+
+            inserted = db().table("demo_registrations").insert({
+                "demo_profile_id": demo_profile_id,
+                "event_id": event_id,
+            }).execute()
+            return jsonify({
+                "message": f"{profile['display_name']} is registered for the event",
+                "data": inserted.data[0] if inserted.data else None,
+            }), 201
+        except APIError as error:
+            if "duplicate" in str(error).lower() or "unique" in str(error).lower():
+                return jsonify({"error": "This demo profile is already registered for the event"}), 409
+            app.logger.exception("Could not create demo registration")
+            return jsonify({"error": "Could not create demo registration. Check that backend/demo_profiles.sql has been run.", "details": str(error)}), 500
 
     # GET /api/events
     @app.get("/api/events")

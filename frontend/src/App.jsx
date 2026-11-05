@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 const apiBase = (import.meta.env.VITE_API_BASE_URL || "https://campus-connect-xtzl.onrender.com")
   .replace(/\/health\/?$/i, "")
   .replace(/\/$/, "");
-const steps = ["Explore", "Event details"];
+const steps = ["Explore", "Event details", "My registrations"];
 const titleOf = (event) => event?.title || event?.name || "Campus event";
 const dateOf = (event) => event?.timestamp || event?.starts_at || event?.date || event?.created_at;
 const placeOf = (event) => event?.location || event?.venue || "Campus location";
@@ -32,6 +32,7 @@ export default function App() {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [profiles, setProfiles] = useState([]);
   const [activeProfile, setActiveProfile] = useState(null);
+  const [demoRegistrations, setDemoRegistrations] = useState([]);
   const [deviceId] = useState(getDemoDeviceId);
   const [switchOpen, setSwitchOpen] = useState(false);
   const [newProfileName, setNewProfileName] = useState("");
@@ -98,6 +99,31 @@ export default function App() {
     finally { setBusy(false); }
   }
 
+  async function loadDemoRegistrations(profileId) {
+    try {
+      const payload = await api(`/api/demo-registrations?demo_profile_id=${encodeURIComponent(profileId)}`);
+      setDemoRegistrations(payload.data || []);
+    } catch (err) { setDemoRegistrations([]); setError(err.message); }
+  }
+
+  async function register() {
+    if (!selectedEvent || !activeProfile) {
+      setError("Choose a demo profile before registering.");
+      return;
+    }
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const payload = await api("/api/demo-registrations", {
+        method: "POST",
+        body: JSON.stringify({ demo_profile_id: activeProfile.id, event_id: selectedEvent.id }),
+      });
+      const savedRegistration = payload.data || { demo_profile_id: activeProfile.id, event_id: selectedEvent.id };
+      setDemoRegistrations((current) => current.some((row) => row?.event_id === selectedEvent.id) ? current : [...current, savedRegistration]);
+      setMessage(payload.message || `Registered ${activeProfile.display_name} for this event.`);
+    } catch (err) { setError(err.message); }
+    finally { setBusy(false); }
+  }
+
   async function loadEvents() {
     setError("");
     try {
@@ -107,6 +133,10 @@ export default function App() {
   }
 
   useEffect(() => { loadEvents(); loadDemoProfiles(); }, []);
+  useEffect(() => {
+    if (activeProfile?.id) loadDemoRegistrations(activeProfile.id);
+    else setDemoRegistrations([]);
+  }, [activeProfile?.id]);
 
   async function showEvent(event) {
     setSelectedEvent(event); setScreen("detail"); setMessage(""); setError("");
@@ -127,20 +157,24 @@ export default function App() {
 
   function navigate(next) {
     setScreen(next); setMessage(""); setError("");
+    if (next === "registrations" && activeProfile?.id) loadDemoRegistrations(activeProfile.id);
   }
+
+  const selectedEventRegistered = demoRegistrations.some((registration) => registration?.event_id === selectedEvent?.id);
 
   return <div className="app-shell">
     <header className="topbar">
       <button className="brand" onClick={() => navigate("events")}><span className="brand-mark">CC</span><span>Campus <b>Connect</b></span></button>
       <nav className="main-nav" aria-label="Main navigation">
         <button className={screen === "events" || screen === "detail" ? "active" : ""} onClick={() => navigate("events")}>Explore events</button>
+        <button className={screen === "registrations" ? "active" : ""} onClick={() => navigate("registrations")}>My registrations</button>
       </nav>
       <div className="account"><span className="avatar">{activeProfile?.display_name?.[0]?.toUpperCase() || "?"}</span><span className="account-email">{activeProfile?.display_name || "Demo profile"}</span><button className="text-button" aria-expanded={switchOpen} onClick={() => setSwitchOpen((open) => !open)}>Switch user</button>
         {switchOpen && <div className="switch-menu"><label>Choose a demo profile<select value={activeProfile?.id || ""} onChange={(event) => { const profile = profiles.find((item) => item.id === event.target.value); if (profile) saveDemoProfile(profile); }}><option value="" disabled>Select a profile</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.display_name}</option>)}</select></label><form onSubmit={createDemoProfile} className="new-profile-form"><label htmlFor="new-demo-profile">Add a demo profile</label><div><input id="new-demo-profile" maxLength="60" value={newProfileName} onChange={(event) => setNewProfileName(event.target.value)} placeholder="Enter a name" /><button className="secondary-button" disabled={busy || !newProfileName.trim()}>Add</button></div></form><small>Demo profiles are saved but do not verify a real person's identity.</small></div>}
       </div>
     </header>
     <main className="page-wrap">
-      <div className="flow-steps" aria-label="App flow">{steps.map((step, index) => <span key={step} className={(screen === ["events", "detail"][index] ? "current " : "") + "flow-step"}><i>{index + 1}</i>{step}</span>)}</div>
+      <div className="flow-steps" aria-label="App flow">{steps.map((step, index) => <span key={step} className={(screen === ["events", "detail", "registrations"][index] ? "current " : "") + "flow-step"}><i>{index + 1}</i>{step}</span>)}</div>
       {error && <div className="notice error" role="alert">{error}</div>}
       {message && <div className="notice success" role="status">{message}</div>}
 
@@ -152,13 +186,15 @@ export default function App() {
         </section>
         <div className="section-heading"><div><span className="eyebrow">WHAT’S HAPPENING</span><h2>Explore campus events</h2></div><span className="result-count">{filteredEvents.length} events</span></div>
         <div className="filters" role="group" aria-label="Event categories">{categories.map((category) => <button key={category} className={filter === category ? "chip selected" : "chip"} onClick={() => setFilter(category)}>{category}</button>)}</div>
-        {events.length === 0 && !error ? <LoadingState text="Loading campus events…" /> : filteredEvents.length === 0 ? <EmptyState title="No events found" text="Try another search or category." /> : <div className="event-grid">{filteredEvents.map((event, index) => <EventCard key={event.id || index} event={event} onOpen={() => showEvent(event)} />)}</div>}
+        {events.length === 0 && !error ? <LoadingState text="Loading campus events…" /> : filteredEvents.length === 0 ? <EmptyState title="No events found" text="Try another search or category." /> : <div className="event-grid">{filteredEvents.map((event, index) => <EventCard key={event.id || index} event={event} badge={demoRegistrations.some((row) => row?.event_id === event.id) ? "Registered" : undefined} onOpen={() => showEvent(event)} />)}</div>}
       </>}
 
       {screen === "detail" && selectedEvent && <section className="detail-layout">
         <div className="detail-main"><button className="back-link" onClick={() => navigate("events")}>← Back to events</button><div className="detail-cover"><span className="cover-label">CAMPUS CONNECT · EVENT</span><span className="cover-graphic">✳</span><span className="cover-date">{formatDate(dateOf(selectedEvent))}</span></div><span className="eyebrow">{selectedEvent.category || "CAMPUS EVENT"}</span><h1>{titleOf(selectedEvent)}</h1><p className="detail-description">{descriptionOf(selectedEvent)}</p><div className="detail-facts"><Fact icon="◷" label="Date & time" value={formatDate(dateOf(selectedEvent))} /><Fact icon="⌖" label="Location" value={placeOf(selectedEvent)} /><Fact icon="◎" label="Organizer" value={selectedEvent.organizer || selectedEvent.organiser_name || "Campus organizer"} /></div>
-        </div><aside className="register-card"><span className="eyebrow">SAVE YOUR SPOT</span><h3>Join the event</h3><p>{selectedEvent.capacity ? `${selectedEvent.capacity} spots available` : "Registration is open to campus members."}</p><button className="primary-button full" disabled>Real account sign-in required</button><small>A demo profile only saves your display choice. It cannot register as a real person.</small></aside>
+        </div><aside className="register-card"><span className="eyebrow">SAVE YOUR SPOT</span><h3>Join the event</h3><p>{selectedEvent.capacity ? `${selectedEvent.capacity} event capacity` : "Registration is open to campus members."}</p><button className="primary-button full" onClick={register} disabled={busy || !activeProfile || selectedEventRegistered}>{busy ? "Please wait…" : selectedEventRegistered ? "Already registered ✓" : "Register for event →"}</button><small>This demo registration is saved for {activeProfile?.display_name || "your selected profile"}.</small></aside>
       </section>}
+
+      {screen === "registrations" && <><div className="section-heading"><div><span className="eyebrow">YOUR CAMPUS PLANS</span><h2>My registrations</h2><p className="muted">Demo events saved for {activeProfile?.display_name || "your selected profile"}.</p></div></div>{demoRegistrations.length ? <div className="event-grid">{demoRegistrations.map((row, index) => { const related = row.events || row.event; const event = (Array.isArray(related) ? related[0] : related) || events.find((item) => item.id === row.event_id) || row; return <EventCard key={row.id || index} event={event} badge="Registered" onOpen={() => showEvent(event)} />; })}</div> : <EmptyState title="No registrations yet" text="Explore campus events and register for one to see it here." action="Explore events" onAction={() => navigate("events")} />}</>}
       <footer className="footer"><span>Campus Connect</span><span>Discover. Show up. Belong.</span></footer>
     </main>
   </div>;

@@ -15,11 +15,21 @@ create table if not exists public.demo_user_preferences (
     updated_at timestamptz not null default now()
 );
 
+create table if not exists public.demo_registrations (
+    id uuid primary key default gen_random_uuid(),
+    demo_profile_id uuid not null references public.demo_profiles(id) on delete cascade,
+    event_id uuid not null references public.events(id) on delete cascade,
+    created_at timestamptz not null default now(),
+    unique (demo_profile_id, event_id)
+);
+
 alter table public.demo_profiles enable row level security;
 alter table public.demo_user_preferences enable row level security;
+alter table public.demo_registrations enable row level security;
 
 grant select, insert on public.demo_profiles to anon, authenticated;
 grant select, insert, update on public.demo_user_preferences to anon, authenticated;
+grant select, insert on public.demo_registrations to anon, authenticated;
 
 drop policy if exists "Public can read demo profiles" on public.demo_profiles;
 create policy "Public can read demo profiles" on public.demo_profiles
@@ -40,6 +50,14 @@ create policy "Public can add demo preferences" on public.demo_user_preferences
 drop policy if exists "Public can update demo preferences" on public.demo_user_preferences;
 create policy "Public can update demo preferences" on public.demo_user_preferences
     for update to anon, authenticated using (true) with check (true);
+
+drop policy if exists "Public can read demo registrations" on public.demo_registrations;
+create policy "Public can read demo registrations" on public.demo_registrations
+    for select to anon, authenticated using (true);
+
+drop policy if exists "Public can add demo registrations" on public.demo_registrations;
+create policy "Public can add demo registrations" on public.demo_registrations
+    for insert to anon, authenticated with check (true);
 
 insert into public.demo_profiles (display_name)
 select seed.display_name
