@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 
-const apiBase = (import.meta.env.VITE_API_BASE_URL || "https://campus-connect-xtzl.onrender.com").replace(/\/$/, "");
+const apiBase = (import.meta.env.VITE_API_BASE_URL || "https://campus-connect-xtzl.onrender.com")
+  .replace(/\/health\/?$/i, "")
+  .replace(/\/$/, "");
 const steps = ["Explore", "Event details"];
 const titleOf = (event) => event?.title || event?.name || "Campus event";
 const dateOf = (event) => event?.timestamp || event?.starts_at || event?.date || event?.created_at;
@@ -62,7 +64,7 @@ export default function App() {
         setActiveProfile(active);
         if (active.id !== saved) await saveDemoProfile(active, false);
       }
-    } catch (err) { setError(err.message); }
+    } catch (err) { setActiveProfile(null); setProfiles([]); setError(err.message); }
   }
 
   async function saveDemoProfile(profile, announce = true) {
@@ -133,7 +135,7 @@ export default function App() {
       <nav className="main-nav" aria-label="Main navigation">
         <button className={screen === "events" || screen === "detail" ? "active" : ""} onClick={() => navigate("events")}>Explore events</button>
       </nav>
-      <div className="account"><span className="avatar">{activeProfile?.display_name?.[0]?.toUpperCase() || "?"}</span><span className="account-email">{activeProfile?.display_name || "Loading profile…"}</span><button className="text-button" aria-expanded={switchOpen} onClick={() => setSwitchOpen((open) => !open)}>Switch user</button>
+      <div className="account"><span className="avatar">{activeProfile?.display_name?.[0]?.toUpperCase() || "?"}</span><span className="account-email">{activeProfile?.display_name || "Demo profile"}</span><button className="text-button" aria-expanded={switchOpen} onClick={() => setSwitchOpen((open) => !open)}>Switch user</button>
         {switchOpen && <div className="switch-menu"><label>Choose a demo profile<select value={activeProfile?.id || ""} onChange={(event) => { const profile = profiles.find((item) => item.id === event.target.value); if (profile) saveDemoProfile(profile); }}><option value="" disabled>Select a profile</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.display_name}</option>)}</select></label><form onSubmit={createDemoProfile} className="new-profile-form"><label htmlFor="new-demo-profile">Add a demo profile</label><div><input id="new-demo-profile" maxLength="60" value={newProfileName} onChange={(event) => setNewProfileName(event.target.value)} placeholder="Enter a name" /><button className="secondary-button" disabled={busy || !newProfileName.trim()}>Add</button></div></form><small>Demo profiles are saved but do not verify a real person's identity.</small></div>}
       </div>
     </header>
