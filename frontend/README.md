@@ -1,28 +1,30 @@
 # Campus Connect frontend
 
-The app opens directly to public event discovery. Visitors can browse events
-and view event details without a sign-in or sign-up page. Registration,
-personal registrations, and organizer attendee lists still require a valid
-Supabase session; the backend checks authentication and organizer ownership.
+The app opens directly to public event discovery. Its demo profile switcher
+lets visitors select or add a display profile; the selected profile is saved in
+the backend database for that browser. Demo profiles are not authenticated
+users and cannot register for events or view private attendee lists.
 
 ## Local setup
 
 1. Install Node.js 20.19+ (or 22.12+).
 2. Copy `.env.example` to `.env.local` and set:
    - `VITE_API_BASE_URL`: the deployed Flask API URL, with no trailing slash.
-   - `VITE_SUPABASE_URL`: the Supabase project URL.
-   - `VITE_SUPABASE_ANON_KEY`: the Supabase public anon key.
 3. Run `npm install`, then `npm run dev`.
 
-The anon key is intended for browser use. Never place a Supabase `service_role`
-or secret key in a `VITE_` variable; frontend variables are visible to visitors.
+No database key belongs in the frontend. Keep Supabase credentials on the
+backend only.
+
+Before using the profile switcher, run `backend/demo_profiles.sql` once in the
+Supabase SQL Editor. This creates public demo-only profile and per-browser
+selection tables; it does not grant access to real user accounts.
 
 ## Render static site
 
 Create a **Static Site** from this repository and set its root directory to
 `frontend`, build command to `npm ci && npm run build`, and publish directory
-to `dist`. Set the three `VITE_` variables above in the Render service settings
-before deploying. In the backend Render service, set `FRONTEND_ORIGIN` to the
+to `dist`. Set `VITE_API_BASE_URL` in the Render service settings before
+deploying. In the backend Render service, set `FRONTEND_ORIGIN` to the
 frontend's exact `https://...onrender.com` URL so the browser can call the API.
 
 ## Vercel
@@ -35,7 +37,5 @@ The included `vercel.json` configures Vite, `npm ci`, `npm run build`, and the
 `https://your-project.vercel.app`) and redeploy the backend so its CORS policy
 allows the frontend.
 
-The pages use `GET /api/events`, `GET /api/events/{id}`,
-`POST /api/registrations`, `GET /api/me/registrations`, and
-`GET /api/events/{id}/registrations`. Supabase Auth handles sign-in/sign-up;
-the access token is sent as a bearer token to protected Flask endpoints.
+The pages use `GET /api/events`, `GET /api/events/{id}`, `GET /api/demo-users`,
+`POST /api/demo-users`, `GET /api/demo-user`, and `PUT /api/demo-user`.

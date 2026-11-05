@@ -1,12 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
-
-const steps = ["Explore", "Event details", "My registrations", "Organizer attendees"];
+const steps = ["Explore", "Event details"];
 const titleOf = (event) => event?.title || event?.name || "Campus event";
 const dateOf = (event) => event?.timestamp || event?.starts_at || event?.date || event?.created_at;
 const placeOf = (event) => event?.location || event?.venue || "Campus location";
@@ -19,56 +14,86 @@ function formatDate(value) {
   return new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
 }
 
+function getDemoDeviceId() {
+  const key = "campus-connect-demo-device-id";
+  let id = window.localStorage.getItem(key);
+  if (!id) {
+    id = crypto.randomUUID();
+    window.localStorage.setItem(key, id);
+  }
+  return id;
+}
+
 export default function App() {
-  const [session, setSession] = useState(null);
-  const [authReady, setAuthReady] = useState(!supabase);
   const [screen, setScreen] = useState("events");
   const [events, setEvents] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
-  const [registrations, setRegistrations] = useState([]);
-  const [attendees, setAttendees] = useState([]);
+  const [profiles, setProfiles] = useState([]);
+  const [activeProfile, setActiveProfile] = useState(null);
+  const [deviceId] = useState(getDemoDeviceId);
+  const [switchOpen, setSwitchOpen] = useState(false);
+  const [newProfileName, setNewProfileName] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All events");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    if (!supabase) return undefined;
-    let mounted = true;
-    supabase.auth.getSession().then(({ data, error: sessionError }) => {
-      if (!mounted) return;
-      if (sessionError) setError(sessionError.message);
-      setSession(data?.session || null);
-      if (data?.session) setScreen("events");
-      setAuthReady(true);
-    }).catch((sessionError) => {
-      if (!mounted) return;
-      setError(sessionError.message || "Could not restore your sign-in session.");
-      setAuthReady(true);
-    });
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      if (!mounted) return;
-      setSession(nextSession);
-      setAuthReady(true);
-      if (nextSession) setScreen((current) => ["login", "signup"].includes(current) ? "events" : current);
-    });
-    return () => { mounted = false; data.subscription.unsubscribe(); };
-  }, []);
-
-  async function api(path, options = {}, requiresAuth = false) {
+  async function api(path, options = {}) {
     if (!apiBase) throw new Error("Set VITE_API_BASE_URL in frontend/.env.local first.");
     const headers = { "Content-Type": "application/json", ...options.headers };
-    if (requiresAuth) {
-      if (!supabase) throw new Error("This page does not include sign-in. Sign in to your campus account before using this feature.");
-      const { data } = await supabase.auth.getSession();
-      if (!data.session?.access_token) throw new Error("Please sign in again to continue.");
-      headers.Authorization = `Bearer ${data.session.access_token}`;
-    }
     const response = await fetch(`${apiBase}${path}`, { ...options, headers });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || `Request failed (${response.status}).`);
     return payload;
+  }
+
+  async function loadDemoProfiles() {
+    try {
+      const [profilesPayload, preferencePayload] = await Promise.all([
+        api("/api/demo-users"),
+        api(`/api/demo-user?device_id=${encodeURIComponent(deviceId)}`),
+      ]);
+      const available = profilesPayload.data || [];
+      setProfiles(available);
+      const saved = preferencePayload.data?.demo_profile_id;
+      const active = available.find((profile) => profile.id === saved) || available[0] || null;
+      if (active) {
+        setActiveProfile(active);
+        if (active.id !== saved) await saveDemoProfile(active, false);
+      }
+    } catch (err) { setError(err.message); }
+  }
+
+  async function saveDemoProfile(profile, announce = true) {
+    setError("");
+    try {
+      await api("/api/demo-user", {
+        method: "PUT",
+        body: JSON.stringify({ device_id: deviceId, demo_profile_id: profile.id }),
+      });
+      setActiveProfile(profile);
+      setSwitchOpen(false);
+      if (announce) setMessage(`Switched to ${profile.display_name}. This choice is saved in the database.`);
+    } catch (err) { setError(err.message); }
+  }
+
+  async function createDemoProfile(event) {
+    event.preventDefault();
+    const display_name = newProfileName.trim();
+    if (!display_name) return;
+    setBusy(true); setError("");
+    try {
+      const payload = await api("/api/demo-users", {
+        method: "POST",
+        body: JSON.stringify({ display_name }),
+      });
+      const profile = payload.data;
+      setProfiles((current) => [...current, profile].sort((a, b) => a.display_name.localeCompare(b.display_name)));
+      setNewProfileName("");
+      await saveDemoProfile(profile);
+    } catch (err) { setError(err.message); }
+    finally { setBusy(false); }
   }
 
   async function loadEvents() {
@@ -79,14 +104,7 @@ export default function App() {
     } catch (err) { setError(err.message); }
   }
 
-  useEffect(() => { loadEvents(); }, []);
-
-  async function loadRegistrations() {
-    setBusy(true); setError("");
-    try { const payload = await api("/api/me/registrations", {}, true); setRegistrations(payload.data || []); }
-    catch (err) { setError(err.message); }
-    finally { setBusy(false); }
-  }
+  useEffect(() => { loadEvents(); loadDemoProfiles(); }, []);
 
   async function showEvent(event) {
     setSelectedEvent(event); setScreen("detail"); setMessage(""); setError("");
@@ -94,32 +112,6 @@ export default function App() {
       const payload = await api(`/api/events/${encodeURIComponent(event.id)}`);
       setSelectedEvent(payload.data || event);
     } catch (err) { setError(err.message); }
-  }
-
-  async function register() {
-    if (!selectedEvent) return;
-    if (!session) {
-      setError("Registration requires a signed-in campus account. This frontend copy has no sign-in or sign-up page.");
-      return;
-    }
-    setBusy(true); setError(""); setMessage("");
-    try {
-      const payload = await api("/api/registrations", { method: "POST", body: JSON.stringify({ event_id: selectedEvent.id }) }, true);
-      setMessage(payload.message || "You're registered for this event.");
-    } catch (err) { setError(err.message); }
-    finally { setBusy(false); }
-  }
-
-  async function loadAttendees(event) {
-    setSelectedEvent(event); setAttendees([]); setBusy(true); setError("");
-    try { const payload = await api(`/api/events/${encodeURIComponent(event.id)}/registrations`, {}, true); setAttendees(payload.data || []); }
-    catch (err) { setError(err.message); }
-    finally { setBusy(false); }
-  }
-
-  async function signOut() {
-    if (supabase) await supabase.auth.signOut();
-    setSession(null); setScreen("login"); setMessage(""); setError("");
   }
 
   const filteredEvents = useMemo(() => events.filter((event) => {
@@ -133,29 +125,20 @@ export default function App() {
 
   function navigate(next) {
     setScreen(next); setMessage(""); setError("");
-    if ((next === "registrations" || next === "attendees") && !session) {
-      setScreen("events");
-      setError("Sign in to your campus account to access this feature. The sign-in page was removed from this frontend copy.");
-      return;
-    }
-    if (next === "registrations") loadRegistrations();
-    if (next === "attendees" && events.length && !selectedEvent) loadAttendees(events[0]);
   }
-
-  if (!authReady) return <main className="auth-shell"><div className="empty-state"><span className="loader"></span><p>Checking your sign-in…</p></div></main>;
 
   return <div className="app-shell">
     <header className="topbar">
       <button className="brand" onClick={() => navigate("events")}><span className="brand-mark">CC</span><span>Campus <b>Connect</b></span></button>
       <nav className="main-nav" aria-label="Main navigation">
         <button className={screen === "events" || screen === "detail" ? "active" : ""} onClick={() => navigate("events")}>Explore events</button>
-        {session && <button className={screen === "registrations" ? "active" : ""} onClick={() => navigate("registrations")}>My registrations</button>}
-        {session && <button className={screen === "attendees" ? "active" : ""} onClick={() => navigate("attendees")}>Organizer attendees</button>}
       </nav>
-      <div className="account"><span className="avatar">{session?.user.email?.[0]?.toUpperCase() || "G"}</span><span className="account-email">{session?.user.email || "Guest"}</span>{session && <button className="text-button" onClick={signOut}>Sign out</button>}</div>
+      <div className="account"><span className="avatar">{activeProfile?.display_name?.[0]?.toUpperCase() || "?"}</span><span className="account-email">{activeProfile?.display_name || "Loading profile…"}</span><button className="text-button" aria-expanded={switchOpen} onClick={() => setSwitchOpen((open) => !open)}>Switch user</button>
+        {switchOpen && <div className="switch-menu"><label>Choose a demo profile<select value={activeProfile?.id || ""} onChange={(event) => { const profile = profiles.find((item) => item.id === event.target.value); if (profile) saveDemoProfile(profile); }}><option value="" disabled>Select a profile</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.display_name}</option>)}</select></label><form onSubmit={createDemoProfile} className="new-profile-form"><label htmlFor="new-demo-profile">Add a demo profile</label><div><input id="new-demo-profile" maxLength="60" value={newProfileName} onChange={(event) => setNewProfileName(event.target.value)} placeholder="Enter a name" /><button className="secondary-button" disabled={busy || !newProfileName.trim()}>Add</button></div></form><small>Demo profiles are saved but do not verify a real person's identity.</small></div>}
+      </div>
     </header>
     <main className="page-wrap">
-      <div className="flow-steps" aria-label="App flow">{steps.map((step, index) => <span key={step} className={(screen === ["events", "detail", "registrations", "attendees"][index] ? "current " : "") + "flow-step"}><i>{index + 1}</i>{step}</span>)}</div>
+      <div className="flow-steps" aria-label="App flow">{steps.map((step, index) => <span key={step} className={(screen === ["events", "detail"][index] ? "current " : "") + "flow-step"}><i>{index + 1}</i>{step}</span>)}</div>
       {error && <div className="notice error" role="alert">{error}</div>}
       {message && <div className="notice success" role="status">{message}</div>}
 
@@ -172,12 +155,8 @@ export default function App() {
 
       {screen === "detail" && selectedEvent && <section className="detail-layout">
         <div className="detail-main"><button className="back-link" onClick={() => navigate("events")}>← Back to events</button><div className="detail-cover"><span className="cover-label">CAMPUS CONNECT · EVENT</span><span className="cover-graphic">✳</span><span className="cover-date">{formatDate(dateOf(selectedEvent))}</span></div><span className="eyebrow">{selectedEvent.category || "CAMPUS EVENT"}</span><h1>{titleOf(selectedEvent)}</h1><p className="detail-description">{descriptionOf(selectedEvent)}</p><div className="detail-facts"><Fact icon="◷" label="Date & time" value={formatDate(dateOf(selectedEvent))} /><Fact icon="⌖" label="Location" value={placeOf(selectedEvent)} /><Fact icon="◎" label="Organizer" value={selectedEvent.organizer || selectedEvent.organiser_name || "Campus organizer"} /></div>
-        </div><aside className="register-card"><span className="eyebrow">SAVE YOUR SPOT</span><h3>Join the event</h3><p>{selectedEvent.capacity ? `${selectedEvent.capacity} spots available` : "Registration is open to campus members."}</p><button className="primary-button full" onClick={register} disabled={busy || !session}>{busy ? "Please wait…" : session ? "Register for event →" : "Sign-in required"}</button><small>{session ? "Your registration is linked to your account." : "Sign in to your campus account to register. This frontend copy has no sign-in page."}</small></aside>
+        </div><aside className="register-card"><span className="eyebrow">SAVE YOUR SPOT</span><h3>Join the event</h3><p>{selectedEvent.capacity ? `${selectedEvent.capacity} spots available` : "Registration is open to campus members."}</p><button className="primary-button full" disabled>Real account sign-in required</button><small>A demo profile only saves your display choice. It cannot register as a real person.</small></aside>
       </section>}
-
-      {screen === "registrations" && <><div className="section-heading"><div><span className="eyebrow">YOUR CAMPUS PLANS</span><h2>My registrations</h2><p className="muted">Events you’ve saved your place for.</p></div></div>{busy ? <LoadingState text="Loading registrations…" /> : registrations.length ? <div className="event-grid">{registrations.map((row, index) => { const related = row.events || row.event; const event = (Array.isArray(related) ? related[0] : related) || row; return <EventCard key={row.id || index} event={event} badge="Registered" onOpen={() => showEvent(event)} />; })}</div> : <EmptyState title="No registrations yet" text="Explore campus events and register for something you like." action="Explore events" onAction={() => navigate("events")} />}</>}
-
-      {screen === "attendees" && <><div className="section-heading"><div><span className="eyebrow">ORGANIZER TOOLS</span><h2>Event attendees</h2><p className="muted">Attendee details are available only to the event’s organizer.</p></div></div>{events.length > 0 && <label className="event-select">Choose an event<select value={selectedEvent?.id || ""} onChange={(event) => { const choice = events.find((item) => String(item.id) === event.target.value); if (choice) loadAttendees(choice); }}>{events.map((event) => <option key={event.id} value={event.id}>{titleOf(event)}</option>)}</select></label>}{busy ? <LoadingState text="Loading attendee list…" /> : attendees.length ? <div className="table-wrap"><table><thead><tr><th>Attendee</th><th>Registration</th></tr></thead><tbody>{attendees.map((row, index) => <tr key={row.id || index}><td><span className="avatar small">{(row.user?.email || row.email || "S")[0].toUpperCase()}</span>{row.user?.email || row.email || `Student ${index + 1}`}</td><td>{formatDate(row.created_at)}</td></tr>)}</tbody></table></div> : !error && <EmptyState title="No attendees to show" text="Select one of your events. The API restricts this list to its organizer." />}</>}
       <footer className="footer"><span>Campus Connect</span><span>Discover. Show up. Belong.</span></footer>
     </main>
   </div>;

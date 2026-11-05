@@ -20,3 +20,13 @@ local-development URL.
 Local development can copy `.env.example` to `.env` and fill in the same two
 values. Install dependencies with `pip install -r requirements.txt` and run
 `gunicorn app:app` (or `flask --app app run` for local-only development).
+
+## Demo profile switcher
+
+To support the frontend's unauthenticated demo profile switcher, run
+`demo_profiles.sql` once in the Supabase SQL Editor. It creates public demo-only
+profile and per-browser preference tables. The chosen profile is stored against
+a browser-generated ID. These demo profiles do not authenticate a person and
+must not be used for private data or real event registration. Redeploy the
+backend after changing `app.py` so the `/api/demo-users` and `/api/demo-user`
+routes are available.

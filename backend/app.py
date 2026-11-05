@@ -42,7 +42,7 @@ def create_app():
         if origin in allowed_origins:
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, OPTIONS"
             response.headers["Access-Control-Max-Age"] = "600"
             response.headers.add("Vary", "Origin")
         return response
@@ -106,6 +106,10 @@ def create_app():
             "endpoints": [
                 "GET /api/events",
                 "GET /api/events/<id>",
+                "GET /api/demo-users",
+                "POST /api/demo-users",
+                "GET /api/demo-user",
+                "PUT /api/demo-user",
                 "POST /api/registrations",
                 "GET /api/me/registrations",
                 "GET /api/events/<id>/registrations",
@@ -115,6 +119,67 @@ def create_app():
     @app.get("/health")
     def health():
         return jsonify({"status": "ok"}), 200
+
+    # Demo profiles are public display identities only. They are deliberately
+    # separate from Supabase Auth users and must never authorize real accounts.
+    @app.get("/api/demo-users")
+    def list_demo_users():
+        try:
+            result = db().table("demo_profiles").select("id,display_name").order("display_name").execute()
+            return jsonify({"data": result.data}), 200
+        except APIError as error:
+            app.logger.exception("Could not load demo profiles")
+            return jsonify({"error": "Could not load demo profiles. Apply backend/demo_profiles.sql first.", "details": str(error)}), 500
+
+    @app.post("/api/demo-users")
+    def create_demo_user():
+        body = request.get_json(silent=True) or {}
+        display_name = str(body.get("display_name", "")).strip()
+        if not display_name or len(display_name) > 60:
+            return jsonify({"error": "display_name must be between 1 and 60 characters"}), 400
+        try:
+            result = db().table("demo_profiles").insert({"display_name": display_name}).execute()
+            return jsonify({"data": result.data[0] if result.data else None}), 201
+        except APIError as error:
+            if "duplicate" in str(error).lower() or "unique" in str(error).lower():
+                return jsonify({"error": "A demo profile with that name already exists"}), 409
+            app.logger.exception("Could not create demo profile")
+            return jsonify({"error": "Could not create demo profile", "details": str(error)}), 500
+
+    @app.get("/api/demo-user")
+    def get_demo_user():
+        device_id = parse_uuid(request.args.get("device_id"))
+        if not device_id:
+            return jsonify({"error": "A valid device_id is required"}), 400
+        try:
+            result = (
+                db().table("demo_user_preferences")
+                .select("device_id,demo_profile_id,demo_profiles(id,display_name)")
+                .eq("device_id", device_id)
+                .maybe_single()
+                .execute()
+            )
+            return jsonify({"data": result.data}), 200
+        except APIError as error:
+            app.logger.exception("Could not load saved demo profile")
+            return jsonify({"error": "Could not load saved demo profile", "details": str(error)}), 500
+
+    @app.put("/api/demo-user")
+    def save_demo_user():
+        body = request.get_json(silent=True) or {}
+        device_id = parse_uuid(body.get("device_id"))
+        demo_profile_id = parse_uuid(body.get("demo_profile_id"))
+        if not device_id or not demo_profile_id:
+            return jsonify({"error": "Valid device_id and demo_profile_id are required"}), 400
+        try:
+            result = db().table("demo_user_preferences").upsert(
+                {"device_id": device_id, "demo_profile_id": demo_profile_id},
+                on_conflict="device_id",
+            ).execute()
+            return jsonify({"data": result.data[0] if result.data else None}), 200
+        except APIError as error:
+            app.logger.exception("Could not save selected demo profile")
+            return jsonify({"error": "Could not save selected demo profile", "details": str(error)}), 500
 
     # GET /api/events
     @app.get("/api/events")
