@@ -157,15 +157,18 @@ def create_app():
         try:
             result = (
                 db().table("demo_user_preferences")
-                .select("device_id,demo_profile_id,demo_profiles(id,display_name)")
+                .select("device_id,demo_profile_id")
                 .eq("device_id", device_id)
-                .maybe_single()
+                .limit(1)
                 .execute()
             )
-            return jsonify({"data": result.data}), 200
+            return jsonify({"data": result.data[0] if result.data else None}), 200
         except APIError as error:
             app.logger.exception("Could not load saved demo profile")
             return jsonify({"error": "Demo profile tables are not ready. Run backend/demo_profiles.sql in the Supabase SQL Editor.", "details": str(error)}), 500
+        except Exception as error:
+            app.logger.exception("Unexpected error while loading saved demo profile")
+            return jsonify({"error": "Could not load saved demo profile", "details": str(error)}), 500
 
     @app.put("/api/demo-user")
     def save_demo_user():
