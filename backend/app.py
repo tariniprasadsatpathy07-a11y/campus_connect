@@ -165,7 +165,7 @@ def create_app():
             return jsonify({"data": result.data}), 200
         except APIError as error:
             app.logger.exception("Could not load saved demo profile")
-            return jsonify({"error": "Could not load saved demo profile", "details": str(error)}), 500
+            return jsonify({"error": "Demo profile tables are not ready. Run backend/demo_profiles.sql in the Supabase SQL Editor.", "details": str(error)}), 500
 
     @app.put("/api/demo-user")
     def save_demo_user():
