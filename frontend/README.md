@@ -1,9 +1,9 @@
 # Campus Connect frontend
 
-The app flow starts with sign in, then opens event discovery. From there a
-student can open event details, register, and review their registrations.
-Organizers can open the attendee page for one of their events; the backend
-checks organizer ownership.
+The app opens directly to public event discovery. Visitors can browse events
+and view event details without a sign-in or sign-up page. Registration,
+personal registrations, and organizer attendee lists still require a valid
+Supabase session; the backend checks authentication and organizer ownership.
 
 ## Local setup
 

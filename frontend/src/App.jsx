@@ -6,7 +6,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
-const steps = ["Sign in", "Explore", "Event details", "My registrations", "Organizer attendees"];
+const steps = ["Explore", "Event details", "My registrations", "Organizer attendees"];
 const titleOf = (event) => event?.title || event?.name || "Campus event";
 const dateOf = (event) => event?.timestamp || event?.starts_at || event?.date || event?.created_at;
 const placeOf = (event) => event?.location || event?.venue || "Campus location";
@@ -22,8 +22,7 @@ function formatDate(value) {
 export default function App() {
   const [session, setSession] = useState(null);
   const [authReady, setAuthReady] = useState(!supabase);
-  const [screen, setScreen] = useState("login");
-  const [authMode, setAuthMode] = useState("login");
+  const [screen, setScreen] = useState("events");
   const [events, setEvents] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [registrations, setRegistrations] = useState([]);
@@ -61,6 +60,7 @@ export default function App() {
     if (!apiBase) throw new Error("Set VITE_API_BASE_URL in frontend/.env.local first.");
     const headers = { "Content-Type": "application/json", ...options.headers };
     if (requiresAuth) {
+      if (!supabase) throw new Error("This page does not include sign-in. Sign in to your campus account before using this feature.");
       const { data } = await supabase.auth.getSession();
       if (!data.session?.access_token) throw new Error("Please sign in again to continue.");
       headers.Authorization = `Bearer ${data.session.access_token}`;
@@ -79,7 +79,7 @@ export default function App() {
     } catch (err) { setError(err.message); }
   }
 
-  useEffect(() => { if (session) loadEvents(); }, [session]);
+  useEffect(() => { loadEvents(); }, []);
 
   async function loadRegistrations() {
     setBusy(true); setError("");
@@ -98,6 +98,10 @@ export default function App() {
 
   async function register() {
     if (!selectedEvent) return;
+    if (!session) {
+      setError("Registration requires a signed-in campus account. This frontend copy has no sign-in or sign-up page.");
+      return;
+    }
     setBusy(true); setError(""); setMessage("");
     try {
       const payload = await api("/api/registrations", { method: "POST", body: JSON.stringify({ event_id: selectedEvent.id }) }, true);
@@ -110,21 +114,6 @@ export default function App() {
     setSelectedEvent(event); setAttendees([]); setBusy(true); setError("");
     try { const payload = await api(`/api/events/${encodeURIComponent(event.id)}/registrations`, {}, true); setAttendees(payload.data || []); }
     catch (err) { setError(err.message); }
-    finally { setBusy(false); }
-  }
-
-  async function signIn(event) {
-    event.preventDefault(); setError(""); setMessage(""); setBusy(true);
-    const form = new FormData(event.currentTarget);
-    try {
-      if (!supabase) throw new Error("Set the Supabase URL and public anon key in the frontend environment variables.");
-      const result = authMode === "login"
-        ? await supabase.auth.signInWithPassword({ email: form.get("email"), password: form.get("password") })
-        : await supabase.auth.signUp({ email: form.get("email"), password: form.get("password") });
-      if (result.error) throw result.error;
-      if (!result.data.session && authMode === "signup") setMessage("Check your email to confirm your account, then sign in.");
-      else setScreen("events");
-    } catch (err) { setError(err.message || "Could not sign in."); }
     finally { setBusy(false); }
   }
 
@@ -144,28 +133,29 @@ export default function App() {
 
   function navigate(next) {
     setScreen(next); setMessage(""); setError("");
+    if ((next === "registrations" || next === "attendees") && !session) {
+      setScreen("events");
+      setError("Sign in to your campus account to access this feature. The sign-in page was removed from this frontend copy.");
+      return;
+    }
     if (next === "registrations") loadRegistrations();
     if (next === "attendees" && events.length && !selectedEvent) loadAttendees(events[0]);
   }
 
   if (!authReady) return <main className="auth-shell"><div className="empty-state"><span className="loader"></span><p>Checking your sign-in…</p></div></main>;
 
-  if (["login", "signup"].includes(screen) || !session) {
-    return <AuthPage mode={authMode} setMode={(mode) => { setAuthMode(mode); setScreen(mode === "login" ? "login" : "signup"); setError(""); }} onSubmit={signIn} busy={busy} error={error} message={message} />;
-  }
-
   return <div className="app-shell">
     <header className="topbar">
       <button className="brand" onClick={() => navigate("events")}><span className="brand-mark">CC</span><span>Campus <b>Connect</b></span></button>
       <nav className="main-nav" aria-label="Main navigation">
         <button className={screen === "events" || screen === "detail" ? "active" : ""} onClick={() => navigate("events")}>Explore events</button>
-        <button className={screen === "registrations" ? "active" : ""} onClick={() => navigate("registrations")}>My registrations</button>
-        <button className={screen === "attendees" ? "active" : ""} onClick={() => navigate("attendees")}>Organizer attendees</button>
+        {session && <button className={screen === "registrations" ? "active" : ""} onClick={() => navigate("registrations")}>My registrations</button>}
+        {session && <button className={screen === "attendees" ? "active" : ""} onClick={() => navigate("attendees")}>Organizer attendees</button>}
       </nav>
-      <div className="account"><span className="avatar">{session.user.email?.[0]?.toUpperCase() || "S"}</span><span className="account-email">{session.user.email}</span><button className="text-button" onClick={signOut}>Sign out</button></div>
+      <div className="account"><span className="avatar">{session?.user.email?.[0]?.toUpperCase() || "G"}</span><span className="account-email">{session?.user.email || "Guest"}</span>{session && <button className="text-button" onClick={signOut}>Sign out</button>}</div>
     </header>
     <main className="page-wrap">
-      <div className="flow-steps" aria-label="App flow">{steps.slice(1).map((step, index) => <span key={step} className={(screen === ["events", "detail", "registrations", "attendees"][index] ? "current " : "") + "flow-step"}><i>{index + 1}</i>{step}</span>)}</div>
+      <div className="flow-steps" aria-label="App flow">{steps.map((step, index) => <span key={step} className={(screen === ["events", "detail", "registrations", "attendees"][index] ? "current " : "") + "flow-step"}><i>{index + 1}</i>{step}</span>)}</div>
       {error && <div className="notice error" role="alert">{error}</div>}
       {message && <div className="notice success" role="status">{message}</div>}
 
@@ -182,7 +172,7 @@ export default function App() {
 
       {screen === "detail" && selectedEvent && <section className="detail-layout">
         <div className="detail-main"><button className="back-link" onClick={() => navigate("events")}>← Back to events</button><div className="detail-cover"><span className="cover-label">CAMPUS CONNECT · EVENT</span><span className="cover-graphic">✳</span><span className="cover-date">{formatDate(dateOf(selectedEvent))}</span></div><span className="eyebrow">{selectedEvent.category || "CAMPUS EVENT"}</span><h1>{titleOf(selectedEvent)}</h1><p className="detail-description">{descriptionOf(selectedEvent)}</p><div className="detail-facts"><Fact icon="◷" label="Date & time" value={formatDate(dateOf(selectedEvent))} /><Fact icon="⌖" label="Location" value={placeOf(selectedEvent)} /><Fact icon="◎" label="Organizer" value={selectedEvent.organizer || selectedEvent.organiser_name || "Campus organizer"} /></div>
-        </div><aside className="register-card"><span className="eyebrow">SAVE YOUR SPOT</span><h3>Join the event</h3><p>{selectedEvent.capacity ? `${selectedEvent.capacity} spots available` : "Registration is open to campus members."}</p><button className="primary-button full" onClick={register} disabled={busy}>{busy ? "Please wait…" : "Register for event →"}</button><small>Sign-in required. Your registration is linked to your account.</small></aside>
+        </div><aside className="register-card"><span className="eyebrow">SAVE YOUR SPOT</span><h3>Join the event</h3><p>{selectedEvent.capacity ? `${selectedEvent.capacity} spots available` : "Registration is open to campus members."}</p><button className="primary-button full" onClick={register} disabled={busy || !session}>{busy ? "Please wait…" : session ? "Register for event →" : "Sign-in required"}</button><small>{session ? "Your registration is linked to your account." : "Sign in to your campus account to register. This frontend copy has no sign-in page."}</small></aside>
       </section>}
 
       {screen === "registrations" && <><div className="section-heading"><div><span className="eyebrow">YOUR CAMPUS PLANS</span><h2>My registrations</h2><p className="muted">Events you’ve saved your place for.</p></div></div>{busy ? <LoadingState text="Loading registrations…" /> : registrations.length ? <div className="event-grid">{registrations.map((row, index) => { const related = row.events || row.event; const event = (Array.isArray(related) ? related[0] : related) || row; return <EventCard key={row.id || index} event={event} badge="Registered" onOpen={() => showEvent(event)} />; })}</div> : <EmptyState title="No registrations yet" text="Explore campus events and register for something you like." action="Explore events" onAction={() => navigate("events")} />}</>}
@@ -191,16 +181,6 @@ export default function App() {
       <footer className="footer"><span>Campus Connect</span><span>Discover. Show up. Belong.</span></footer>
     </main>
   </div>;
-}
-
-function AuthPage({ mode, setMode, onSubmit, busy, error, message }) {
-  return <main className="auth-shell"><div className="auth-story"><a className="brand auth-brand" href="#"><span className="brand-mark">CC</span><span>Campus <b>Connect</b></span></a><span className="eyebrow">THE CAMPUS IS YOURS</span><h1>Your next<br /><em>chapter starts here.</em></h1><p>Find the events, communities, and moments that make college yours.</p><div className="story-badge"><span>✳</span><div><b>Good things happen together</b><small>Explore what’s happening around campus.</small></div></div><div className="story-orbit orbit-one"></div><div className="story-orbit orbit-two"></div></div>
-    <section className="auth-panel"><div className="auth-card"><span className="eyebrow">WELCOME TO CAMPUS CONNECT</span><h2>{mode === "login" ? "Welcome back" : "Create your account"}</h2><p className="muted">{mode === "login" ? "Sign in to pick up where campus life is happening." : "Use your email to join your campus community."}</p>
-      <div className="auth-tabs"><button className={mode === "login" ? "selected" : ""} onClick={() => setMode("login")}>Sign in</button><button className={mode === "signup" ? "selected" : ""} onClick={() => setMode("signup")}>Create account</button></div>
-      {error && <div className="notice error" role="alert">{error}</div>}{message && <div className="notice success" role="status">{message}</div>}
-      <form onSubmit={onSubmit} className="auth-form"><label>Email address<input name="email" type="email" autoComplete="email" placeholder="you@university.edu" required /></label><label>Password<input name="password" type="password" minLength="6" autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="At least 6 characters" required /></label><button className="primary-button full" disabled={busy}>{busy ? "Please wait…" : mode === "login" ? "Sign in →" : "Create account →"}</button></form><p className="auth-foot">Secure sign-in powered by Supabase Auth.</p>
-    </div></section>
-  </main>;
 }
 
 function EventCard({ event, onOpen, badge }) {
