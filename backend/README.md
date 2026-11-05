@@ -14,6 +14,9 @@
 
 The app expects the Supabase `events` and `registration` tables and the
 associated Auth, grants, and row-level security policies to already exist.
+Set `FRONTEND_ORIGIN` to the exact URL of the deployed frontend (or a
+comma-separated list of allowed frontend origins). It defaults to the Vite
+local-development URL.
 Local development can copy `.env.example` to `.env` and fill in the same two
 values. Install dependencies with `pip install -r requirements.txt` and run
 `gunicorn app:app` (or `flask --app app run` for local-only development).

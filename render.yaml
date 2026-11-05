@@ -13,3 +13,19 @@ services:
         sync: false
       - key: SUPABASE_KEY
         sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false
+
+  - type: web
+    runtime: static
+    name: campus-connect-frontend
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        sync: false
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false

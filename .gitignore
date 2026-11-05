@@ -12,3 +12,5 @@
 *.py[cod]
 **/logs/
 **/cache/
+**/node_modules/
+**/dist/

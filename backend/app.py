@@ -25,6 +25,28 @@ def create_supabase_client(access_token=None) -> Client:
 def create_app():
     app = Flask(__name__)
 
+    allowed_origins = {
+        origin.strip().rstrip("/")
+        for origin in os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173").split(",")
+        if origin.strip()
+    }
+
+    @app.before_request
+    def handle_preflight():
+        if request.method == "OPTIONS":
+            return "", 204
+
+    @app.after_request
+    def add_cors_headers(response):
+        origin = request.headers.get("Origin", "").rstrip("/")
+        if origin in allowed_origins:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            response.headers["Access-Control-Max-Age"] = "600"
+            response.headers.add("Vary", "Origin")
+        return response
+
     @app.errorhandler(404)
     def not_found(_error):
         return jsonify({"error": "Resource not found"}), 404
