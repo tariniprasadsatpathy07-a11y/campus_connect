@@ -1,0 +1,14 @@
+# Local secrets and environment files
+.env
+.env.*
+!.env.example
+**/secret_key
+**/field_encryption_key
+
+# Local Python environments and generated files
+**/venv/
+**/.venv/
+**/__pycache__/
+*.py[cod]
+**/logs/
+**/cache/
