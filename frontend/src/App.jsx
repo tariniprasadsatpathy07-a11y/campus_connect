@@ -21,6 +21,7 @@ function formatDate(value) {
 
 export default function App() {
   const [session, setSession] = useState(null);
+  const [authReady, setAuthReady] = useState(!supabase);
   const [screen, setScreen] = useState("login");
   const [authMode, setAuthMode] = useState("login");
   const [events, setEvents] = useState([]);
@@ -35,15 +36,25 @@ export default function App() {
 
   useEffect(() => {
     if (!supabase) return undefined;
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      if (data.session) setScreen("events");
+    let mounted = true;
+    supabase.auth.getSession().then(({ data, error: sessionError }) => {
+      if (!mounted) return;
+      if (sessionError) setError(sessionError.message);
+      setSession(data?.session || null);
+      if (data?.session) setScreen("events");
+      setAuthReady(true);
+    }).catch((sessionError) => {
+      if (!mounted) return;
+      setError(sessionError.message || "Could not restore your sign-in session.");
+      setAuthReady(true);
     });
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!mounted) return;
       setSession(nextSession);
+      setAuthReady(true);
       if (nextSession) setScreen((current) => ["login", "signup"].includes(current) ? "events" : current);
     });
-    return () => data.subscription.unsubscribe();
+    return () => { mounted = false; data.subscription.unsubscribe(); };
   }, []);
 
   async function api(path, options = {}, requiresAuth = false) {
@@ -136,6 +147,8 @@ export default function App() {
     if (next === "registrations") loadRegistrations();
     if (next === "attendees" && events.length && !selectedEvent) loadAttendees(events[0]);
   }
+
+  if (!authReady) return <main className="auth-shell"><div className="empty-state"><span className="loader"></span><p>Checking your sign-in…</p></div></main>;
 
   if (["login", "signup"].includes(screen) || !session) {
     return <AuthPage mode={authMode} setMode={(mode) => { setAuthMode(mode); setScreen(mode === "login" ? "login" : "signup"); setError(""); }} onSubmit={signIn} busy={busy} error={error} message={message} />;

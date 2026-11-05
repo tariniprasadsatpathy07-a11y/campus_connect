@@ -25,6 +25,16 @@ to `dist`. Set the three `VITE_` variables above in the Render service settings
 before deploying. In the backend Render service, set `FRONTEND_ORIGIN` to the
 frontend's exact `https://...onrender.com` URL so the browser can call the API.
 
+## Vercel
+
+Import this repository into Vercel and set the **Root Directory** to `frontend`.
+The included `vercel.json` configures Vite, `npm ci`, `npm run build`, and the
+`dist` output directory. Add the same three `VITE_` environment variables from
+`.env.example` in Vercel's project settings, then deploy. Set the backend's
+`FRONTEND_ORIGIN` to the exact Vercel URL (for example,
+`https://your-project.vercel.app`) and redeploy the backend so its CORS policy
+allows the frontend.
+
 The pages use `GET /api/events`, `GET /api/events/{id}`,
 `POST /api/registrations`, `GET /api/me/registrations`, and
 `GET /api/events/{id}/registrations`. Supabase Auth handles sign-in/sign-up;
