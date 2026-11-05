@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-const apiBase = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+const apiBase = (import.meta.env.VITE_API_BASE_URL || "https://campus-connect-xtzl.onrender.com").replace(/\/$/, "");
 const steps = ["Explore", "Event details"];
 const titleOf = (event) => event?.title || event?.name || "Campus event";
 const dateOf = (event) => event?.timestamp || event?.starts_at || event?.date || event?.created_at;

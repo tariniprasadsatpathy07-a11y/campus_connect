@@ -30,6 +30,9 @@ def create_app():
         for origin in os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173").split(",")
         if origin.strip()
     }
+    # Keep the production frontend origin allowed even when the optional
+    # FRONTEND_ORIGIN environment variable has not yet been configured.
+    allowed_origins.add("https://campus-connect-ren7.vercel.app")
 
     @app.before_request
     def handle_preflight():
