@@ -1,0 +1,14 @@
+# Local Python environment and bytecode
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Local secrets and generated Codex state
+.env
+.env.*
+!.env.example
+config/secret_key
+config/field_encryption_key
+config/cache/
+config/logs/
